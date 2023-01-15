@@ -77,6 +77,11 @@ public class Main {
         System.out.println("vip tree shortest path between d"+
                 d3.label+" and d"+d4.label+" is "+vipTree.findArbitraryDis(d3,d4,S,T));//计算s和t在不同叶节点
         vipTree.printPath(d3,d4);//debug和run结果不一样
+        int k = 7;
+        PriorityQueue<Door> pq = vipTree.KNNs(d3,k,S);
+        System.out.print("d2's "+k+"NN:");
+        vipTree.printKNN(pq);
     }
+
 
 }

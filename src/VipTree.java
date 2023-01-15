@@ -11,6 +11,7 @@ public class VipTree {
     int pos; //查询Partition S对应叶节点的位置(暂时没用)，映射到叶节点
     Partition S;
     Door midDoori,midDoorj;
+    Node root;
     Map<FromTo,Door> midDoorMap = new HashMap<>();
     final static int t = 2;// t be the minimum degree of the IP-Tree denoting the minimum number of children in each
                            //non-root node
@@ -30,6 +31,7 @@ public class VipTree {
             createNextLevel(nodesMap.get(i), t);
             i+=1;
         }
+        root = nodesMap.get(i)[0];
         Map<FromTo,Double> map = getDistances(doorMap.get(2),nodesMap.get(3)[0],S);
     }
 
@@ -43,6 +45,8 @@ public class VipTree {
         Map<FromTo,Element> distanceMap;
         boolean isLeafNode = false;
         Set<Door> doors;
+        Set<Node> child = new HashSet<>();
+        Double minDist;
         Node(int l){
             level = l;
             degree = 1;
@@ -92,6 +96,7 @@ public class VipTree {
                         doors.addAll(P.doors);
                     }
                 }
+
                 ////获得连接两个节点的access door,前面已经标记的access door是连接外面的
                 for (Door door:doors){
                     Iterator<Partition> partitionIterator= door.pars.iterator();
@@ -191,8 +196,13 @@ public class VipTree {
         node.accessDoors = accessDoors;//l+1 level的access door
         node.distanceMap = distanceMap;
         node.degree = N1.degree+ N2.degree;
+        node.pSet = new HashSet<>();
+        node.pSet.addAll(N1.pSet);
+        node.pSet.addAll(N2.pSet);
         N1.parent = node;
         N2.parent = node;
+        node.child.add(N1);
+        node.child.add(N2);
         return node;
     }
 
@@ -440,7 +450,156 @@ public class VipTree {
         }
         return false;
     }
+    //找到q的KNN，Q为q所在的分区
+    public PriorityQueue<Door> KNNs(Door q,int k,Partition Q){
+        double dk = Double.MAX_VALUE;
+        Map<FromTo,Double> m = getDistances(q,root,Q);
+        Node leafQ = getLeafNode(q);
+        for (Door d:leafQ.accessDoors){
+            FromTo f = new FromTo(q,d);
+            if (!m.containsKey(f))
+                m.put(f,leafQ.distanceMap.get(f).distance);
+        }
+        while (leafQ.parent!=root){
+            Map<FromTo,Double> mm = getDistances(q,leafQ.parent,Q);
+            Iterator<Map.Entry<FromTo,Double>> iterator = mm.entrySet().iterator();
+            while (iterator.hasNext()){
+                Map.Entry<FromTo,Double> entry = iterator.next();
+                FromTo f = entry.getKey();
+                if (!m.containsKey(f))
+                    m.put(f,entry.getValue());
+            }
+            leafQ = leafQ.parent;
+        }
+        Comparator<Node> nodeComparator = new Comparator<Node>() {
+            @Override
+            public int compare(Node o1, Node o2) {
+                return (int) (o1.minDist-o2.minDist);
+            }
+        };
+        Comparator<Door> doorComparator = new Comparator<Door>() {
+            @Override
+            public int compare(Door o1, Door o2) {
+                return (int) (G.shortestPath(q,o2)- G.shortestPath(q,o1));//距离越大排得越前
+            }
+        };
+        PriorityQueue<Node> H = new PriorityQueue<>(nodeComparator);
+        PriorityQueue<Door> pq = new PriorityQueue<>(doorComparator);
+        H.add(root);
+        while (!H.isEmpty()){
+            Node N = H.remove();
+            N.minDist = mindist(q,N,Q,m);
+            if (N.minDist>dk)
+                return pq;
+            if (!N.isLeafNode){
+                if (N.child!=null){
+                    if (N.pSet.contains(Q)) {
+                        for (Node node : N.child) {
+                            node.minDist = mindist1(q, node, Q, m);
+                            H.add(node);
+                        }
+                    }
+                    else{
+                        for (Node node : N.child) {
+                            node.minDist = mindist2(q, node, Q, m);
+                            H.add(node);
+                        }
+                    }
+                }
+            }
+            else {
+                for (Door door:N.doors){
+                    if (pq.size()<k){
+                        if (!door.equals(q))
+                            pq.add(door);
+                    }
+                    else {
+                        if (!door.equals(q)) {
+                            if (doorComparator.compare(door, pq.peek()) > 0) {
+                                pq.poll();
+                                pq.add(door);
+                            }
+                        }
+                    }
+                }
+                dk = G.shortestPath(pq.peek(),q);
 
+            }
+
+        }
+        return pq;
+    }
+
+    private double mindist(Door q,Node N,Partition Q,Map<FromTo,Double>map){
+        double min = Double.MAX_VALUE;
+        for (Door d:N.accessDoors){
+            double dis;
+            if (map.containsKey(new FromTo(q,d)))
+                 dis = map.get(new FromTo(q,d));
+            else
+                dis = findArbitraryDis(q,d,Q,d.pars.iterator().next());
+            if (dis<min)
+                min = dis;
+        }
+        return min;
+    }
+
+    private double mindist1(Door q,Node N,Partition Q,Map<FromTo,Double> map){
+        double dis = Double.MAX_VALUE;
+        if (N.pSet.contains(Q))
+            return 0;
+        else {
+            for (Node N1:N.parent.child){
+                if (N1.pSet.contains(Q)){
+                    for (Door di:N.accessDoors) {
+                        double min = Double.MAX_VALUE;
+                        for (Door dj : N1.accessDoors) {
+                            double dis1 = map.get(new FromTo(q,dj));
+                            double dis2 = N.parent.distanceMap.get(new FromTo(dj, di)).distance;
+                            if (dis1 + dis2 < min) {
+                                min = dis1 + dis2;
+                            }
+                        }
+                        if (dis>min)
+                            dis = min;
+                    }
+                }
+            }
+        }
+        return dis;
+
+    }
+
+    private double mindist2(Door q,Node N,Partition Q,Map<FromTo,Double> map){
+        double dis = Double.MAX_VALUE;
+        if (N.pSet.contains(Q))
+            return 0;
+        else {
+            Node N1 = N.parent;
+            for (Door di:N.accessDoors){
+                double min1 = Double.MAX_VALUE;
+                for (Door dj : N1.accessDoors) {
+                    double dis1 = map.get(new FromTo(q,dj));
+                    double dis2 = N.parent.distanceMap.get(new FromTo(dj, di)).distance;
+                    if (dis1 + dis2 < min1) {
+                        min1 = dis1 + dis2;
+                    }
+                }
+                if (dis>min1)
+                    dis = min1;
+            }
+        }
+        return dis;
+    }
+
+    void printKNN(PriorityQueue<Door> pq){
+        Stack<Door> stack = new Stack<>();
+        for (Door door:pq){
+            stack.add(door);
+        }
+        while (!stack.isEmpty())
+            System.out.print(" d"+stack.pop().label);
+    }
 
 
 }
