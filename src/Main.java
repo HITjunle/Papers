@@ -67,20 +67,24 @@ public class Main {
             d.pars.add(p2);
             d.isAccessDoor = pid1 == 0 || pid2 == 0;
         }
-        Partition S = parMap.get(1);
-        Partition T = parMap.get(17);
+        Partition S = parMap.get(1);//注意分区S和d3匹配
+        Partition T = parMap.get(17);//分区T和d4匹配
         VipTree vipTree = new VipTree(G,doorMap,parMap,adjPar,S,T);//查询点s所在分区S，查询点t所在分区T
-        Door d3 = doorMap.get(2);
+        Door d3 = doorMap.get(1);
         Door d4 = doorMap.get(20);
         System.out.println("Dijkstra shortest path between d"+
                 d3.label+" and d"+d4.label+" is "+G.shortestPath(d3,d4));//任意点的距离
         System.out.println("vip tree shortest path between d"+
                 d3.label+" and d"+d4.label+" is "+vipTree.findArbitraryDis(d3,d4,S,T));//计算s和t在不同叶节点
-        vipTree.printPath(d3,d4);//debug和run结果不一样
+        vipTree.printPath(d3,d4);
         int k = 7;
-        PriorityQueue<Door> pq = vipTree.KNNs(d3,k,S);
-        System.out.print("d2's "+k+"NN:");
+        Door d5 = doorMap.get(20);
+        Partition p5 = parMap.get(17);//d5所在分区
+        PriorityQueue<Door> pq = vipTree.KNNs(d5,k,p5);
+        System.out.print("d"+d5.label+"s "+k+"NN:");
         vipTree.printKNN(pq);
+        System.out.println();//debug和run结果顺序不一样
+
     }
 
 
