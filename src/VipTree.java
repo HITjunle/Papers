@@ -10,6 +10,7 @@ public class VipTree {
     Node[] nodes1;//叶子节点
     int pos; //查询Partition S对应叶节点的位置(暂时没用)，映射到叶节点
     Partition S;
+    Partition T;
     Door midDoori,midDoorj;
     Node root;
     Map<FromTo,Door> midDoorMap = new HashMap<>();
@@ -21,7 +22,7 @@ public class VipTree {
         G = d2Dgraph;
         this.parMap = parMap;
         this.S = S;
-        int level = 1;
+        this.T = T;
         Set<Door[]> doors = new LinkedHashSet<>();
         nodes1 = createLeafNode(parMap,adjPar);//获得叶子节点
         nodesMap = new HashMap<>();
@@ -32,14 +33,13 @@ public class VipTree {
             i+=1;
         }
         root = nodesMap.get(i)[0];
-        Map<FromTo,Double> map = getDistances(doorMap.get(2),nodesMap.get(3)[0],S);
     }
 
      class Node{
         int level;
         int degree;
         boolean isVisit = false;//在create next level中找最多公共门时候用到
-        Set<Door> accessDoors;
+        Set<Door> accessDoors ;
         Set<Partition> pSet;
         Node parent = null;
         Map<FromTo,Element> distanceMap;
@@ -117,12 +117,7 @@ public class VipTree {
     }
 
     public void createNextLevel(Node[] nodes, int t){
-        Comparator<Node> nodeComparable = new Comparator<Node>() {
-            @Override
-            public int compare(Node o1, Node o2) {
-                return o1.degree-o2.degree;
-            }
-        };
+        Comparator<Node> nodeComparable = (o1, o2) -> o1.degree-o2.degree;
         PriorityQueue<Node> H = new PriorityQueue<>(nodeComparable);
         for (Node node : nodes) {
             H.add(node);
@@ -211,7 +206,7 @@ public class VipTree {
         for (Door D:Leaf.accessDoors){
             if (d.equals(D)&&p.doors.contains(d))
                 return true;// local access door
-            if (!D.isGlobal&&!p.doors.contains(D))
+            if (!D.isGlobal&&!p.doors.contains(D)&&Leaf.doors.contains(D))
                 D.isGlobal = true;//global access door
         }
         for (Door door:Leaf.accessDoors){
@@ -228,7 +223,7 @@ public class VipTree {
 
     public double getDis(Door s,Door d,Partition S){
         double min = Double.MAX_VALUE;
-        Node Leaf = getLeafNode(s);
+        Node Leaf = getLeafByPar(S);
         Door mid = null;
         for(Door di:S.doors){
             if (isSuperior(di,S,Leaf)){
@@ -294,17 +289,34 @@ public class VipTree {
         return m;
     }
 
-
+    private Node getLeafByPar(Partition partition){
+        for (Node N:nodes1){
+            if (N.pSet.contains(partition))
+                return N;
+        }
+        return null;
+    }
 
 
 //Shortest distance between two arbitrary points s and t
 //dist(s, t) when s and t are in different leaf nodes
     public double findArbitraryDis(Door s,Door t,Partition S,Partition T){
-        Node Ns = getLeafNode(s);
-        Node Nt = getLeafNode(t);
+        Node Ns = getLeafByPar(S);
+        Node Nt = getLeafByPar(T);
         if (Ns.equals(Nt))
             return getDis(s,t,S);
         Node Lca = LCA(Ns,Nt);
+        if (Ns.parent.equals(Lca)&&Nt.parent.equals(Lca)){
+            for (Door door:Ns.accessDoors){
+                if (door.pars.contains(S)&&door.pars.contains(T)){
+                    double dis = Ns.distanceMap.get(new FromTo(s,door)).distance;
+                    double dis1 = Nt.distanceMap.get(new FromTo(door,t)).distance;
+                    midDoori = door;
+                    midDoorj = door;
+                    return dis + dis1;
+                }
+            }
+        }
         while (!Ns.parent.equals(Lca))
             Ns = Ns.parent;
         while (!Nt.parent.equals(Lca))
@@ -357,8 +369,9 @@ public class VipTree {
             doorSet = Decompose(s, d1, doorSet);
             doorSet = Decompose(d1, midDoori, doorSet);
         }
-        if (!midDoori.equals(midDoorj))
-            doorSet = Decompose(midDoori,midDoorj,doorSet);
+        if (!midDoori.equals(midDoorj)) {
+            doorSet = Decompose(midDoori, midDoorj, doorSet);
+        }
         if (d2==null){
             doorSet = Decompose(midDoorj,t,doorSet);
         }
@@ -394,7 +407,7 @@ public class VipTree {
     //分解di和dj的路径
     public Set<Door> Decompose(Door di,Door dj,Set<Door> route){
         //判断是不是在同一叶节点，如果是直接算
-        if (isInTheSameAccessDoor(di,dj)){
+        if (isInTheSameLeaf(S,T)){
             Stack<Door> doorStack = G.SPath(di,dj);
             while (!doorStack.isEmpty()){
                 route.add(doorStack.pop());
@@ -420,11 +433,18 @@ public class VipTree {
                             N = node;
                     }
                 }
-                if (N!=null&&!N.distanceMap.containsKey(new FromTo(di,dj))){
+                if (N==null){
+                    Stack<Door> stack = G.SPath(di,dj);
+                    while (!stack.isEmpty())
+                        route.add(stack.pop());
+                    return route;
+                }
+
+                if (!N.distanceMap.containsKey(new FromTo(di,dj))){
                     route.add(di);
                     route.add(dj);
                 }
-                else if (N!=null){
+                else {
                     Door dk = N.distanceMap.get(new FromTo(di, dj)).nextHopDoor;
                     if (dk == null) {
                         route.add(di);
@@ -438,16 +458,11 @@ public class VipTree {
         }
         return route;
     }
-    private boolean isInTheSameAccessDoor(Door di,Door dj){
-        Node i = getLeafNode(di);
-        Node j = getLeafNode(dj);
+    private boolean isInTheSameLeaf(Partition S,Partition T){
+        Node i = getLeafByPar(S);
+        Node j = getLeafByPar(T);
         if (i.equals(j))
             return true;
-        else {
-            for (Partition partition:dj.pars)
-                if (di.pars.contains(partition))
-                    return true;
-        }
         return false;
     }
     //找到q的KNN，Q为q所在的分区
@@ -508,16 +523,20 @@ public class VipTree {
                 }
             }
             else {
-                for (Door door:N.doors){
-                    if (pq.size()<k){
-                        if (!door.equals(q))
-                            pq.add(door);
-                    }
-                    else {
-                        if (!door.equals(q)) {
-                            if (doorComparator.compare(door, pq.peek()) > 0) {
-                                pq.poll();
+                for (Door door:N.doors) {
+                    if (!door.isVisit) {
+                        if (pq.size() < k) {
+                            if (!door.equals(q)) {
                                 pq.add(door);
+                                door.isVisit = true;
+                            }
+                        } else {
+                            if (!door.equals(q)) {
+                                if (G.shortestPath(door,q)<G.shortestPath(pq.peek(),q)) {
+                                    pq.poll();
+                                    pq.add(door);
+                                    door.isVisit = true;
+                                }
                             }
                         }
                     }
